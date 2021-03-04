@@ -832,7 +832,7 @@ BEGIN
                 ELSEIF exists(SELECT 1
                               FROM test_item_results
                                        JOIN test_item t ON test_item_results.result_id = t.item_id
-                              WHERE (test_item_results.status != 'PASSED')
+                              WHERE test_item_results.status != 'PASSED'
                                 AND t.unique_id = firstitemid
                                 AND nlevel(t.path) = i
                                 AND t.has_stats
