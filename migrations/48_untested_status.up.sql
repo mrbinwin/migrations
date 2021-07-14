@@ -14,6 +14,8 @@ CREATE OR REPLACE FUNCTION update_executions_statistics()
 $$
 DECLARE
     DECLARE
+    cur_item_id               BIGINT;
+    DECLARE
     executions_field          VARCHAR;
     DECLARE
     executions_field_id       BIGINT;
@@ -31,24 +33,29 @@ DECLARE
     counter_decrease          INTEGER;
 
 BEGIN
+
     IF exists(SELECT 1
               FROM test_item
-              WHERE (test_item.parent_id = new.result_id
-                  AND test_item.has_stats)
-                 OR (test_item.item_id = new.result_id AND (NOT test_item.has_stats OR
-                                                            (test_item.type != 'TEST' :: TEST_ITEM_TYPE_ENUM AND
-                                                             test_item.type != 'SCENARIO' :: TEST_ITEM_TYPE_ENUM AND
-                                                             test_item.type != 'STEP' :: TEST_ITEM_TYPE_ENUM)))
-              LIMIT 1)
+              WHERE test_item.item_id = new.result_id
+                AND (test_item.has_children
+                  OR (NOT test_item.has_stats OR
+                      (test_item.type != 'TEST' :: TEST_ITEM_TYPE_ENUM AND
+                       test_item.type != 'SCENARIO' :: TEST_ITEM_TYPE_ENUM AND
+                       test_item.type != 'STEP' :: TEST_ITEM_TYPE_ENUM)))
+        )
     THEN
         RETURN new;
     END IF;
 
-    IF exists(SELECT 1
+    cur_item_id := (SELECT item_id
+                    FROM test_item
+                    WHERE item_id = new.result_id
+                        FOR UPDATE);
+
+    IF exists(SELECT item_id
               FROM test_item
               WHERE item_id = new.result_id
-                AND retry_of IS NOT NULL
-              LIMIT 1)
+                AND (NOT has_stats OR retry_of IS NOT NULL))
     THEN
         RETURN new;
     END IF;
@@ -84,14 +91,22 @@ BEGIN
     THEN
         INSERT INTO statistics (s_counter, statistics_field_id, item_id)
             (SELECT 1, executions_field_id, item_id
-             FROM (SELECT item_id FROM test_item WHERE path @> (SELECT path FROM test_item WHERE item_id = new.result_id)) AS temp_bulk)
+             FROM (SELECT item_id
+                   FROM test_item
+                   WHERE path @> (SELECT path FROM test_item WHERE item_id = new.result_id)
+                   ORDER BY item_id) AS temp_bulk
+             ORDER BY item_id)
         ON CONFLICT (statistics_field_id,
             item_id)
             DO UPDATE SET s_counter = statistics.s_counter + 1;
 
         INSERT INTO statistics (s_counter, statistics_field_id, item_id)
             (SELECT 1, executions_field_total_id, item_id
-             FROM (SELECT item_id FROM test_item WHERE path @> (SELECT path FROM test_item WHERE item_id = new.result_id)) AS temp_bulk)
+             FROM (SELECT item_id
+                   FROM test_item
+                   WHERE path @> (SELECT path FROM test_item WHERE item_id = new.result_id)
+                   ORDER BY item_id) AS temp_bulk
+             ORDER BY item_id)
         ON CONFLICT (statistics_field_id,
             item_id)
             DO UPDATE SET s_counter = statistics.s_counter + 1;
@@ -134,12 +149,19 @@ BEGIN
         UPDATE statistics
         SET s_counter = s_counter - counter_decrease
         WHERE statistics_field_id = executions_field_old_id
-          AND item_id IN (SELECT item_id FROM test_item WHERE path @> (SELECT path FROM test_item WHERE item_id = new.result_id));
+          AND item_id IN (SELECT item_id
+                          FROM test_item
+                          WHERE path @> (SELECT path FROM test_item WHERE item_id = new.result_id)
+                          ORDER BY item_id);
 
         /* increment item executions statistics for concrete field */
         INSERT INTO statistics (s_counter, statistics_field_id, item_id)
             (SELECT 1, executions_field_id, item_id
-             FROM (SELECT item_id FROM test_item WHERE path @> (SELECT path FROM test_item WHERE item_id = new.result_id)) AS temp_bulk)
+             FROM (SELECT item_id
+                   FROM test_item
+                   WHERE path @> (SELECT path FROM test_item WHERE item_id = new.result_id)
+                   ORDER BY item_id) AS temp_bulk
+             ORDER BY item_id)
         ON CONFLICT (statistics_field_id,
             item_id)
             DO UPDATE SET s_counter = statistics.s_counter + 1;
