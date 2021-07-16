@@ -1,13 +1,4 @@
-ALTER TYPE status_enum RENAME TO status_enum_old;
-
-CREATE TYPE status_enum AS ENUM ('CANCELLED', 'FAILED', 'INTERRUPTED', 'IN_PROGRESS', 'PASSED', 'RESETED', 'SKIPPED', 'STOPPED', 'INFO', 'WARN', 'UNTESTED');
-
-ALTER TABLE launch
-    ALTER COLUMN status TYPE status_enum USING status::text::status_enum;
-ALTER TABLE test_item_results
-    ALTER COLUMN status TYPE status_enum USING status::text::status_enum;
-
-DROP TYPE status_enum_old;
+ALTER TYPE status_enum ADD VALUE 'UNTESTED';
 
 CREATE OR REPLACE FUNCTION update_executions_statistics()
     RETURNS TRIGGER AS
